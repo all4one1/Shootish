@@ -9,8 +9,6 @@ using namespace std;
 
 
 
-
-
 template <typename type>
 void allocation2(type*** f, int nx, int ny)
 {
@@ -44,8 +42,11 @@ struct Shooting_Method
 	bool doubleSizeLayer = false;
 	long long int u = 0;
 	double eps = 1e-6;
+	bool spectrum = false;
 	vector<int> bc;
 	vector<int> unity;
+	void (Shooting_Method::* equation)(cd, double, int, int, cd**, int, double, cd&);
+
 
 	struct SecantMethod
 	{
@@ -55,7 +56,7 @@ struct Shooting_Method
 		int n = 3;
 		int z = 0, *l, s = 0, NN = 0, s1 = 0, s2 = 0;
 		double *x, *y, delx = 0, dely = 0, dd = 0;
-		double e = 1e-6, esmall = 1e-10, ebig = 1e+10;
+		double e = 1e-6, esmall = 1e-9, ebig = 1e+9;
 		Shooting_Method* parent = nullptr;
 		SecantMethod() {};
 		SecantMethod(Shooting_Method* p) : parent(p)
@@ -87,8 +88,8 @@ struct Shooting_Method
 			{
 			begin:
 
-				double delta = 0.01;
-				double base = 0.1;
+				double delta = 0.001;
+				double base = 0.01;
 				if (s1 != 0)
 				{
 					if (x[2] == 0.0 || std::abs(x[2]) < esmall)
@@ -187,8 +188,9 @@ struct Shooting_Method
 						std::cout << "iterations = " << NN << std::endl;
 					#endif // PRINTINFO
 
-				
-					if (NN > 100  || abs(x4) > 15000 || abs(y4) > 100)
+					double limit1 = 150000, limit2 = 100;
+					if (parent->spectrum) limit1 = 500;
+					if (NN > 400  || abs(x4) > limit1 || abs(y4) > limit2)
 					{
 						#ifdef PRINTINFO
 							std::cout << "over looped" << std::endl;
@@ -213,14 +215,20 @@ struct Shooting_Method
 
 	Shooting_Method()
 	{
+		
 
-		n = 6; 
+		//equation = &Shooting_Method::equation_test; n = 8; bc = { 0, 1, 5, 6, 8 };
+
+
+		//equation = &Shooting_Method::equation_pure_convection; n = 6; bc = { 0, 1, 4 };
+		
+		
+		equation = &Shooting_Method::transformed_equations_3d;	n = 10; 	bc = { 0, 1, 4, 6, 9 };
+
+		//equation = &Shooting_Method::equations_for_2d_with_pulsations; 	n = 10;  bc = { 0, 1, 5, 6, 8 };
+
+		
 		s = n / 2;
-
-		// 0: w, 1: w', 4: T, 6: T'', 8: C, 9: C'
-		//bc = { 0, 1, 4, 6, 9};
-
-		bc = { 0, 2, 4 };
 
 		for (int i = 0; i < n; i++)
 			if (std::find(bc.begin(), bc.end(), i) == bc.end())
@@ -294,114 +302,116 @@ struct Shooting_Method
 	}
 
 
-	//void equation(cd ld, double Ra, int i, int n, cd** y, int j, double x, cd& f)
-	//{
-	//	//y[0] = w, y[1] = w', y[2] = w'', y[3] = w'''
-	//	#define TT (y[j][4])
-	//	#define TTprime (y[j][5])
-	//	#define TTprime2 (y[j][6])
-
-	//	#define CC (y[j][8])
-	//	#define CCprime (y[j][9])
-	//	#define CCprime2 (y[j][10])
-
-	//	#define FF (TT + K * CC)
-	//	#define FFprime (TTprime + K * CCprime)
-
-	//	#define wz (y[j][0])
-	//	#define wzprime (y[j][1])
-	//	#define wzprime2 (y[j][2])
-	//	#define wzprime3 (y[j][3])
-
-	//	#define WZ y[j][8]
-	//	#define WZprime y[j][9]
-	//	#define Wprime2 (pow(k, 2) * y[j][8] - pow(k, 2) * FF * sinA - I * k * k_ratio * FFprime * cosB)
-	//	#define V0(x) (V0_prime * (x - 0.5))
-	//	#define VX ((1.0 - pow(k_ratio, 2)) * cosB * FF + I * k_ratio / k * WZprime)
-	//	#define VXprime ((1.0 - pow(k_ratio, 2)) * cosB * FFprime + I * k_ratio / k * WZprime2)
-
-	//	#define SOURCE (Ra*cosA*FF + A5 * (x - 0.5) * I * k * k_ratio * FF - cosG * (1.0 + K) * Rav - A1 * VX - A2 * WZ)
-
-
-
-	//	std::complex<double> I = { 0, 1 };
-	//	f = { 0,0 };
-
-	//	switch (i) {
-	//	case 0:			 // w
-	//		f = y[j][1]; // w' = w''
-	//		break;
-	//	case 1:			 // w'
-	//		f = y[j][2]; // w''
-	//		break;
-	//	case 2:		  	 // w''
-	//		f = y[j][3]; // w'''
-	//		break;
-	//	case 3:			// w''''
-	//		f =  (ld / Pr) * (wzprime2 - pow(k, 2) * wz)  // ∇^2 * λ / Pr
-	//			+ 2 * pow(k, 2) * wzprime2 - pow(k, 4) * wz   // rest of ∇^4
-	//			+ pow(k, 2) * Ra * sinA * FF
-	//			+ I * k * k_ratio * Ra * cosA * FFprime
-	//			- A1 * I * k * k_ratio * (1.0 - pow(k_ratio, 2)) * cosB * FFprime
-	//			+ A1 * pow(k_ratio, 2) * Wprime2
-	//			- A2 * I * k * k_ratio * y[j][9]
-	//			- A3 * pow(k_ratio, 2) * (1 - pow(k_ratio, 2)) * cosB * FF
-	//			- A3 * I * k * k_ratio * y[j][9]
-	//			- A4 * pow(k, 2) * y[j][8]
-	//			- A5 * pow(k, 2) * FF;
-	//		break;
-	//	case 4:		// T
-	//		f = y[j][5];
-	//		break;
-	//	case 5:	   // T'	
-	//		f = y[j][6];
-	//		break;
-	//	case 6:	   // T''	
-	//		f = y[j][7];
-	//		break;
-	//	case 7:	   // T'''
-	//		f = 2 * pow(k, 2) * TTprime2 - pow(k, 4) * TT
-	//			+ ld * (1.0 + 1.0 / Pr) * (TTprime2 - pow(k, 2) * TT)
-	//			- pow(ld, 2) / Pr * TT
-	//			- sinG * (wzprime2 - pow(k, 2) * wz)
-	//			- cosG * (I * k_ratio / k * wzprime3 - I * k_ratio * k * wzprime - ((1.0 - pow(k_ratio, 2)) * SOURCE));
-	//		break;
-	//	
-	//	case 8:
-	//		f = y[j][9];
-	//		break;
-	//	case 9: 
-	//		f = Le * (TTprime2 - pow(k, 2)*TT + ld * CC - ld * TT) + pow(k, 2) * CC;
-	//		break;
-
-
-	//	//case 8:		
-	//	//	f = y[j][9];
-	//	//	break;
-	//	//case 9:	  	
-	//	//	f = y[j][10];
-	//	//	break;
-	//	//case 10:	   	
-	//	//	f = y[j][11];
-	//	//	break;
-	//	//case 11:	   
-	//	//	f = (2 * pow(k, 2) * CCprime2 - pow(k, 4) * CC) / Le
-	//	//		+ ld * (1.0 + 1.0 / (Pr * Le)) * (CCprime2 - pow(k, 2) * CC)
-	//	//		- pow(ld, 2) / Pr * CC
-	//	//		- sinG * (wzprime2 - pow(k, 2) * wz)
-	//	//		- cosG * (I * k_ratio / k * wzprime3 - I * k_ratio * k * wzprime - ((1.0 - pow(k_ratio, 2)) * SOURCE));
-	//	//	f = f * Le;
-	//	//	break;
-	//	}
-	//}
-
-	void equation(cd ld, double Ra, int i, int n, cd** y, int j, double x, cd& f)
+	void transformed_equations_3d(cd ld, double Ra, int i, int n, cd** y, int j, double x, cd& f)
 	{
 		//y[0] = w, y[1] = w', y[2] = w'', y[3] = w'''
-		#define TT y[j][4]
-		#define TTprime y[j][5]
-		#define FF (TT)
-		#define FFprime (y[j][5])
+		#define TT (y[j][4])
+		#define TTprime (y[j][5])
+		#define TTprime2 (y[j][6])
+
+		#define CC (y[j][8])
+		#define CCprime (y[j][9])
+		#define CCprime2 (y[j][10])
+
+		#define FF (TT + K * CC)
+		#define FFprime (TTprime + K * CCprime)
+
+		#define wz (y[j][0])
+		#define wzprime (y[j][1])
+		#define wzprime2 (y[j][2])
+		#define wzprime3 (y[j][3])
+
+		#define WZ y[j][8]
+		#define WZprime y[j][9]
+		#define Wprime2 (pow(k, 2) * y[j][8] - pow(k, 2) * FF * sinB - I * k * k_ratio * FFprime * cosB)
+		#define V0(x) (V0_prime * (x - 0.5))
+		#define VX ((1.0 - pow(k_ratio, 2)) * cosB * FF + I * k_ratio / k * WZprime)
+		#define VXprime ((1.0 - pow(k_ratio, 2)) * cosB * FFprime + I * k_ratio / k * WZprime2)
+
+		#define SOURCE (Ra*cosA*FF + A5 * (x - 0.5) * I * k * k_ratio * FF - cosG * (1.0 + K) * Rav - A1 * VX - A2 * WZ)
+
+
+
+		std::complex<double> I = { 0, 1 };
+		f = { 0,0 };
+
+		switch (i) {
+		case 0:			 // w
+			f = y[j][1]; // w' = w''
+			break;
+		case 1:			 // w'
+			f = y[j][2]; // w''
+			break;
+		case 2:		  	 // w''
+			f = y[j][3]; // w'''
+			break;
+		case 3:			// w''''
+			f =  (ld / Pr) * (wzprime2 - pow(k, 2) * wz)  // ∇^2 * λ / Pr
+				+ 2 * pow(k, 2) * wzprime2 - pow(k, 4) * wz   // rest of ∇^4
+				+ pow(k, 2) * Ra * sinA * FF
+				+ I * k * k_ratio * Ra * cosA * FFprime
+				- A1 * I * k * k_ratio * (1.0 - pow(k_ratio, 2)) * cosB * FFprime
+				+ A1 * pow(k_ratio, 2) * Wprime2
+				- A2 * I * k * k_ratio * y[j][9]
+				- A3 * pow(k_ratio, 2) * (1 - pow(k_ratio, 2)) * cosB * FF
+				- A3 * I * k * k_ratio * y[j][9]
+				- A4 * pow(k, 2) * y[j][8]
+				- A5 * pow(k, 2) * FF;
+			break;
+		case 4:		// T
+			f = y[j][5];
+			break;
+		case 5:	   // T'	
+			f = y[j][6];
+			break;
+		case 6:	   // T''	
+			f = y[j][7];
+			break;
+		case 7:	   // T'''
+			f = 2 * pow(k, 2) * TTprime2 - pow(k, 4) * TT
+				+ ld * (1.0 + 1.0 / Pr) * (TTprime2 - pow(k, 2) * TT)
+				- pow(ld, 2) / Pr * TT
+				- sinG * (wzprime2 - pow(k, 2) * wz)
+				- cosG * (I * k_ratio / k * wzprime3 - I * k_ratio * k * wzprime - ((1.0 - pow(k_ratio, 2)) * SOURCE));
+			break;
+		
+		case 8:
+			f = y[j][9];
+			break;
+		case 9: 
+			f = Le * (TTprime2 - pow(k, 2)*TT + ld * CC - ld * TT) + pow(k, 2) * CC;
+			break;
+
+
+		//case 8:		
+		//	f = y[j][9];
+		//	break;
+		//case 9:	  	
+		//	f = y[j][10];
+		//	break;
+		//case 10:	   	
+		//	f = y[j][11];
+		//	break;
+		//case 11:	   
+		//	f = (2 * pow(k, 2) * CCprime2 - pow(k, 4) * CC) / Le
+		//		+ ld * (1.0 + 1.0 / (Pr * Le)) * (CCprime2 - pow(k, 2) * CC)
+		//		- pow(ld, 2) / Pr * CC
+		//		- sinG * (wzprime2 - pow(k, 2) * wz)
+		//		- cosG * (I * k_ratio / k * wzprime3 - I * k_ratio * k * wzprime - ((1.0 - pow(k_ratio, 2)) * SOURCE));
+		//	f = f * Le;
+		//	break;
+		}
+	}
+
+	void equation_pure_convection(cd ld, double Ra, int i, int n, cd** y, int j, double x, cd& f)
+	{
+		#pragma warning(push)
+		#pragma warning(disable: 4005)
+		//y[0] = w, y[1] = w', y[2] = w'', y[3] = w'''
+		#define TT1 y[j][4]
+		#define TT1prime y[j][5]
+		#define FF1 (TT1)
+		#define FF1prime (y[j][5])
 
 
 		std::complex<double> I = { 0, 1 };
@@ -420,8 +430,8 @@ struct Shooting_Method
 		case 3:			// w''''
 			f = (ld / Pr) * (y[j][2] - pow(k, 2) * y[j][0])  // ∇^2 * λ / Pr
 				+ 2 * pow(k, 2) * y[j][2] - pow(k, 4) * y[j][0]   // rest of ∇^4
-				+ pow(k, 2) * Ra * sinA * FF
-				+ I * k * k_ratio * Ra * cosA * FFprime;
+				+ pow(k, 2) * Ra * sinA * FF1
+				+ I * k * k_ratio * Ra * cosA * FF1prime;
 			break;
 		case 4: // T
 			f = y[j][5]; // T'
@@ -431,11 +441,158 @@ struct Shooting_Method
 			break;
 
 		}
+		#pragma warning(pop)
+	}
 
+	void equations_for_2d_with_pulsations(cd ld, double Ra, int i, int n, cd** y, int j, double x, cd& f)
+	{
+		#pragma warning(push)
+		#pragma warning(disable: 4005)
+
+
+		#define TT y[j][6]
+		#define CC y[j][4]
+		#define TTprime y[j][7]
+		#define CCprime y[j][5]
+
+		#define FF (TT + K * CC)
+		#define FFprime (TTprime + K * CCprime)
+
+		#define wz (y[j][0])
+		#define wzprime (y[j][1])
+		#define wzprime2 (y[j][2])
+		#define wzprime3 (y[j][3])
+
+		#define WZ y[j][8]
+		#define WZprime y[j][9]
+		#define Wprime2 (pow(k, 2) * y[j][8] - pow(k, 2) * FF * sinB - I * k * FFprime * cosB)
+		#define V0(x) (V0_prime * (x - 0.5))
+		#define VX ((1.0 - pow(k_ratio, 2)) * cosB * FF + I * k_ratio / k * WZprime)
+		#define VXprime ((1.0 - pow(k_ratio, 2)) * cosB * FFprime + I * k_ratio / k * WZprime2)
+
+		#define SOURCE (Ra*cosA*FF + A5 * (x - 0.5) * I * k * k_ratio * FF - cosG * (1.0 + K) * Rav - A1 * VX - A2 * WZ)
+
+
+		std::complex<double> I = { 0, 1 };
+		f = { 0,0 };
+
+		switch (i) {
+		case 0:			 // w
+			f = y[j][1]; // w' = w''
+			break;
+		case 1:			 // w'
+			f = y[j][2]; // w''
+			break;
+		case 2:		  	 // w''
+			f = y[j][3]; // w'''
+			break;
+		case 3:			// w''''
+			f = (ld / Pr) * (wzprime2 - pow(k, 2) * wz)  // ∇^2 * λ / Pr
+				+ 2 * pow(k, 2) * wzprime2 - pow(k, 4) * wz   // rest of ∇^4
+				+ pow(k, 2) * Ra * sinA * FF
+				+ I * k * Ra * cosA * FFprime
+				+ A1 * Wprime2
+				- A2 * I * k * y[j][9]
+				- A3 * I * k * y[j][9]
+				- A4 * pow(k, 2) * y[j][8]
+				- A5 * pow(k, 2) * FF;
+			break;
+		case 4: // C
+			f = y[j][5];  // C'
+			break;
+		case 5: // C''
+			f = Le * (-I * y[j][1] * cosG / k - y[j][0] * sinA) + pow(k, 2) * y[j][4] + Le * ld * y[j][4];
+			break;
+		case 6: // T
+			f = y[j][7]; // T'
+			break;
+		case 7: //T''
+			f = (-I * y[j][1] * cosG / k - y[j][0] * sinG) + pow(k, 2) * y[j][6] + ld * y[j][6];
+			break;
+		case 8:
+			f = y[j][9];
+			break;
+		case 9:
+			f = Wprime2;
+			break;
+		}
+		#pragma warning(pop)
+	}
+
+	void equation_test(cd ld, double Ra, int i, int n, cd** y, int j, double x, cd& f)
+	{
+		#pragma warning(push)
+		#pragma warning(disable: 4005)
+		#define TT y[j][6]
+		#define CC y[j][4]
+		#define TTprime y[j][7]
+		#define CCprime y[j][5]
+
+		#define FF (TT + K * CC)
+		#define FFprime (TTprime + K * CCprime)
+
+		#define wz (y[j][0])
+		#define wzprime (y[j][1])
+		#define wzprime2 (y[j][2])
+		#define wzprime3 (y[j][3])
+
+		#define WZ y[j][8]
+		#define WZprime y[j][9]
+		#define Wprime2 (pow(k, 2) * y[j][8] - pow(k, 2) * FF * sinB - I * k * FFprime * cosB)
+		#define V0(x) (V0_prime * (x - 0.5))
+		#define VX ((1.0 - pow(k_ratio, 2)) * cosB * FF + I * k_ratio / k * WZprime)
+		#define VXprime ((1.0 - pow(k_ratio, 2)) * cosB * FFprime + I * k_ratio / k * WZprime2)
+
+		#define SOURCE (Ra*cosA*FF + A5 * (x - 0.5) * I * k * k_ratio * FF - cosG * (1.0 + K) * Rav - A1 * VX - A2 * WZ)
+
+
+		std::complex<double> I = { 0, 1 };
+		f = { 0,0 };
+
+		switch (i) {
+		case 0:			 // w
+			f = y[j][1]; // w' = w''
+			break;
+		case 1:			 // w'
+			f = y[j][2]; // w''
+			break;
+		case 2:		  	 // w''
+			f = y[j][3]; // w'''
+			break;
+		case 3:			// w''''
+			f = (ld / Pr) * (wzprime2 - pow(k, 2) * wz)  // ∇^2 * λ / Pr
+				+ 2 * pow(k, 2) * wzprime2 - pow(k, 4) * wz   // rest of ∇^4
+				+ pow(k, 2) * Ra * sinA * TT
+				+ pow(k, 2) * abs(Ra) * sinA * CC * K;
+				//+ I * k * Ra * cosA * TTprime
+				//- I * k * Ra * cosA * CCprime * K
+
+			break;
+		case 4: // C
+			f = y[j][5];  // C'
+			break;
+		case 5: // C''
+			f = Le * ( - y[j][0] * sinG) + pow(k, 2) * y[j][4] + Le * ld * y[j][4];
+			break;
+		case 6: // T
+			f = y[j][7]; // T'
+			break;
+		case 7: //T''
+			f = (- y[j][0] * sinG) + pow(k, 2) * y[j][6] + ld * y[j][6];
+			break;
+		case 8:
+			f = y[j][9];
+			break;
+		case 9:
+			f = Wprime2;
+			break;
+		}
+		#pragma warning(pop)
 	}
 
 	void ssystem(cd &d, double x4, double y4)
 	{
+		
 
 		loop(q, 0, s)
 			b[q] = 0;
@@ -465,10 +622,15 @@ struct Shooting_Method
 
 		double h = 0.001;
 		double hh = h;
-		ld = cd(x4, y4);
+		
+		ld = cd(0, y4);
+		double ra = x4;
 
-		double ra = Ra;
-
+		if (spectrum)
+		{
+			ld = cd(x4, y4);
+			ra = Ra;
+		}
 
 		while (x < xn)
 		{
@@ -481,9 +643,12 @@ struct Shooting_Method
 
 			//K1
 
+			
+
 			loop(j, 0, s) {
 				loop(i, 0, n) {
-					equation(ld, ra, i, n, y, j, x, f);
+					(this->*equation)(ld, ra, i, n, y, j, x, f);
+					//equation(ld, ra, i, n, y, j, x, f);
 					k1[j][i] = h / 3 * f;
 
 				}
@@ -501,7 +666,7 @@ struct Shooting_Method
 
 			loop(j, 0, s) {
 				loop(i, 0, n) {
-					equation(ld, ra, i, n, y, j, x, f);
+					(this->*equation)(ld, ra, i, n, y, j, x, f);
 					k2[j][i] = h / 3 * f;
 
 				}
@@ -520,7 +685,7 @@ struct Shooting_Method
 
 			loop(j, 0, s) {
 				loop(i, 0, n) {
-					equation(ld, ra, i, n, y, j, x, f);
+					(this->*equation)(ld, ra, i, n, y, j, x, f);
 					k3[j][i] = h / 3 * f;
 				}
 			}
@@ -536,7 +701,7 @@ struct Shooting_Method
 			// K4
 			loop(j, 0, s) {
 				loop(i, 0, n) {
-					equation(ld, ra, i, n, y, j, x, f);
+					(this->*equation)(ld, ra, i, n, y, j, x, f);
 					k4[j][i] = h / 3 * f;
 				}
 			}
@@ -549,7 +714,7 @@ struct Shooting_Method
 			// K5
 			loop(j, 0, s) {
 				loop(i, 0, n) {
-					equation(ld, ra, i, n, y, j, x, f);
+					(this->*equation)(ld, ra, i, n, y, j, x, f);
 					k5[j][i] = h / 3 * f;
 				}
 			}
